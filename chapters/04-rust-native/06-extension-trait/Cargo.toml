@@ -1,0 +1,18 @@
+[package]
+name = "extension-trait"
+version = "0.1.0"
+edition.workspace = true
+autoexamples = false
+license.workspace = true
+
+[[example]]
+name = "extension-trait-direct"
+path = "examples/01_direct.rs"
+
+[[example]]
+name = "extension-trait-pattern"
+path = "examples/02_extension_trait.rs"
+
+[lints]
+workspace = true
+

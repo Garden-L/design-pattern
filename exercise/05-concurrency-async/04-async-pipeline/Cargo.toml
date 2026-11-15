@@ -1,0 +1,11 @@
+[package]
+name = "exercise-05_concurrency_async-04_async_pipeline"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true

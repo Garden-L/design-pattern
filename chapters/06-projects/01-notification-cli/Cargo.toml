@@ -1,0 +1,12 @@
+[package]
+name = "notification-cli"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+creational = { path = "../../01-creational" }
+behavioral = { path = "../../03-behavioral" }
+
+[lints]
+workspace = true

@@ -1,0 +1,18 @@
+[package]
+name = "design-foundations"
+version = "0.1.0"
+edition.workspace = true
+autoexamples = false
+license.workspace = true
+
+[[example]]
+name = "design-foundations-direct"
+path = "examples/01_direct.rs"
+
+[[example]]
+name = "design-foundations-pattern"
+path = "examples/02_design_foundations.rs"
+
+[lints]
+workspace = true
+

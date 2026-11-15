@@ -1,0 +1,11 @@
+[package]
+name = "exercise-04_rust_native-04_interior_mutability"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true

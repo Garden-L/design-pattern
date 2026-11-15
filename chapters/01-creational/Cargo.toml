@@ -1,0 +1,16 @@
+[package]
+name = "creational"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+factory-method = { path = "01-factory-method" }
+abstract-factory = { path = "02-abstract-factory" }
+builder = { path = "03-builder" }
+prototype = { path = "04-prototype" }
+object-pool = { path = "05-object-pool" }
+dependency-injection = { path = "06-dependency-injection" }
+singleton-alternatives = { path = "07-singleton-alternatives" }
+[lints]
+workspace = true

@@ -1,0 +1,10 @@
+/target/
+/.idea/
+/.junie/
+/.superpowers/
+.DS_Store
+
+# Local editor and tool state
+*.swp
+*.swo
+

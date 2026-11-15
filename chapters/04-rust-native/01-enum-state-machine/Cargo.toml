@@ -1,0 +1,18 @@
+[package]
+name = "enum-state-machine"
+version = "0.1.0"
+edition.workspace = true
+autoexamples = false
+license.workspace = true
+
+[[example]]
+name = "enum-state-machine-direct"
+path = "examples/01_direct.rs"
+
+[[example]]
+name = "enum-state-machine-pattern"
+path = "examples/02_enum_state_machine.rs"
+
+[lints]
+workspace = true
+

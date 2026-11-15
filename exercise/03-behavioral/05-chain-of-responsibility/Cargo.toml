@@ -1,0 +1,11 @@
+[package]
+name = "exercise-03_behavioral-05_chain_of_responsibility"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true

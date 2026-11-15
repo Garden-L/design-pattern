@@ -1,0 +1,18 @@
+[package]
+name = "typestate"
+version = "0.1.0"
+edition.workspace = true
+autoexamples = false
+license.workspace = true
+
+[[example]]
+name = "typestate-direct"
+path = "examples/01_direct.rs"
+
+[[example]]
+name = "typestate-pattern"
+path = "examples/02_typestate.rs"
+
+[lints]
+workspace = true
+

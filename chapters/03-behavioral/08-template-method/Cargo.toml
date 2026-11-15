@@ -1,0 +1,18 @@
+[package]
+name = "template-method"
+version = "0.1.0"
+edition.workspace = true
+autoexamples = false
+license.workspace = true
+
+[[example]]
+name = "template-method-direct"
+path = "examples/01_direct.rs"
+
+[[example]]
+name = "template-method-pattern"
+path = "examples/02_template_method.rs"
+
+[lints]
+workspace = true
+

@@ -1,0 +1,18 @@
+[package]
+name = "facade"
+version = "0.1.0"
+edition.workspace = true
+autoexamples = false
+license.workspace = true
+
+[[example]]
+name = "facade-direct"
+path = "examples/01_direct.rs"
+
+[[example]]
+name = "facade-pattern"
+path = "examples/02_facade.rs"
+
+[lints]
+workspace = true
+

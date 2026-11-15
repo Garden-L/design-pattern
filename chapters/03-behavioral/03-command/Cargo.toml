@@ -1,0 +1,18 @@
+[package]
+name = "command"
+version = "0.1.0"
+edition.workspace = true
+autoexamples = false
+license.workspace = true
+
+[[example]]
+name = "command-direct"
+path = "examples/01_direct.rs"
+
+[[example]]
+name = "command-pattern"
+path = "examples/02_command.rs"
+
+[lints]
+workspace = true
+

@@ -1,0 +1,21 @@
+[package]
+name = "work-queue"
+version = "0.1.0"
+edition.workspace = true
+autoexamples = false
+license.workspace = true
+
+[[example]]
+name = "work-queue-direct"
+path = "examples/01_direct.rs"
+
+[[example]]
+name = "work-queue-pattern"
+path = "examples/02_work_queue.rs"
+
+[dependencies]
+concurrency-core = { path = "../00-core" }
+
+[lints]
+workspace = true
+

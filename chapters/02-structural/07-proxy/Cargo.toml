@@ -1,0 +1,18 @@
+[package]
+name = "proxy"
+version = "0.1.0"
+edition.workspace = true
+autoexamples = false
+license.workspace = true
+
+[[example]]
+name = "proxy-direct"
+path = "examples/01_direct.rs"
+
+[[example]]
+name = "proxy-pattern"
+path = "examples/02_proxy.rs"
+
+[lints]
+workspace = true
+

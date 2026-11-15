@@ -1,0 +1,11 @@
+[package]
+name = "exercise-00_foundations-01_design_foundations"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true

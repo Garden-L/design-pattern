@@ -1,0 +1,18 @@
+[package]
+name = "macros"
+version = "0.1.0"
+edition.workspace = true
+autoexamples = false
+license.workspace = true
+
+[[example]]
+name = "macros-direct"
+path = "examples/01_direct.rs"
+
+[[example]]
+name = "macros-pattern"
+path = "examples/02_macros.rs"
+
+[lints]
+workspace = true
+

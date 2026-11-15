@@ -1,0 +1,12 @@
+[package]
+name = "event-pipeline"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+behavioral = { path = "../../03-behavioral" }
+concurrency-async = { path = "../../05-concurrency-async" }
+
+[lints]
+workspace = true

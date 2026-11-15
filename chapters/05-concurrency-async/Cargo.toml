@@ -1,0 +1,19 @@
+[package]
+name = "concurrency-async"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+concurrency-core = { path = "00-core" }
+channel-pipeline = { path = "01-channel-pipeline" }
+actor = { path = "02-actor" }
+work-queue = { path = "03-work-queue" }
+async-pipeline = { path = "04-async-pipeline" }
+tokio = { version = "1", features = ["rt", "sync", "macros"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["time"] }
+
+[lints]
+workspace = true
