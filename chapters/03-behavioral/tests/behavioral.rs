@@ -160,35 +160,37 @@ fn state_accepts_only_valid_transitions() {
 }
 
 #[test]
-fn chain_short_circuits_on_response_or_rejection() {
-    use chain::{ChainError, Handler, Request, Response};
+fn chain_short_circuits_on_immediate_event_activation() {
+    use chain::{Event, EventManager, EventRequest};
     let calls = Rc::new(RefCell::new(Vec::new()));
-    struct Probe(
-        Rc<RefCell<Vec<&'static str>>>,
-        &'static str,
-        Result<Response, ChainError>,
-    );
-    impl Handler for Probe {
-        fn handle(&self, _: &Request) -> Result<Response, ChainError> {
+    struct Probe(Rc<RefCell<Vec<&'static str>>>, &'static str, bool);
+    impl chain::EventHandler for Probe {
+        fn handle(&self, request: &EventRequest) -> chain::EventDecision {
             self.0.borrow_mut().push(self.1);
-            self.2.clone()
+            if self.2 {
+                chain::EventDecision::Activate(request.candidates[0].clone())
+            } else {
+                chain::EventDecision::Continue
+            }
         }
     }
-    let mut chain = chain::EventManager::new();
-    chain.push(Probe(calls.clone(), "skip", Err(ChainError::Continue)));
-    chain.push(Probe(calls.clone(), "answer", Ok(Response("ok".into()))));
-    chain.push(Probe(calls.clone(), "unreached", Err(ChainError::Rejected)));
+    let mut manager = EventManager::new();
+    manager.push(Probe(calls.clone(), "first", true));
+    manager.push(Probe(calls.clone(), "unreached", true));
+    let event = Event {
+        id: "alarm",
+        priority: 100,
+        urgent: true,
+    };
     assert_eq!(
-        chain.handle(&Request("item".into())),
-        Ok(Response("ok".into()))
+        manager
+            .process(EventRequest::new(vec![event.clone()]))
+            .activated,
+        Some(event)
     );
-    assert_eq!(*calls.borrow(), ["skip", "answer"]);
-    for run in [before_chain::run, after_chain::run] {
-        assert_eq!(run("public"), Ok("public data".into()));
-        assert_eq!(run("private"), Err(ChainError::Rejected));
-        assert_eq!(run("other"), Err(ChainError::Unhandled));
-        assert_eq!(run(""), Err(ChainError::Unhandled));
-    }
+    assert_eq!(*calls.borrow(), ["first"]);
+    assert_eq!(before_chain::run(vec![], None).active, None);
+    assert_eq!(after_chain::run(vec![]).active, None);
 }
 
 #[test]
@@ -292,7 +294,7 @@ fn command_overflow_preserves_context_and_replay_state() {
 
 #[test]
 fn chain_rejection_skips_later_handlers_and_all_pass_is_unhandled() {
-    use chain::{EventManager, ChainError, Handler, Request, Response};
+    use chain::{ChainError, Handler, Request, RequestChain, Response};
     struct Reject;
     impl Handler for Reject {
         fn handle(&self, _: &Request) -> Result<Response, ChainError> {
@@ -312,7 +314,7 @@ fn chain_rejection_skips_later_handlers_and_all_pass_is_unhandled() {
         }
     }
     let request = Request("key".into());
-    let mut chain = EventManager::new();
+    let mut chain = RequestChain::new();
     assert_eq!(chain.handle(&request), Err(ChainError::Unhandled));
     chain.push(Pass);
     assert_eq!(chain.handle(&request), Err(ChainError::Unhandled));

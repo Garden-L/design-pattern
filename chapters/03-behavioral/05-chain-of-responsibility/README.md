@@ -1,175 +1,157 @@
-# 05. 책임 연쇄 패턴 — 순차 요청 처리기
+# 05. 책임 연쇄 패턴 — 단일 활성 이벤트 관리자
 
-이 장에서는 클라이언트 요청을 여러 처리기가 순서대로 검사하고, 처리할 수
-있는 객체가 결과를 반환하도록 설계한다. 예제의 도메인은 문서 조회 요청이다.
-인증, 조회, 이후 추가될 감사 로그·속도 제한·캐시 정책을 각각 독립된
-처리기로 둘 수 있어야 한다.
+이 장에서는 여러 이벤트 판단기를 순서대로 연결하고, 최종적으로 **하나의 이벤트만
+활성화**하는 `EventManager`를 만든다. 판단기는 계속 추가할 수 있으며, 특정 판단기가
+즉시 이벤트를 선택하면 뒤의 판단기는 실행하지 않는다.
 
 ## 1. 학습 목표
 
-이 장을 끝낸 학습자는 다음을 할 수 있어야 한다.
-
-- 여러 처리기가 하나의 요청 계약을 공유하도록 `trait Handler`를 정의한다.
-- 현재 처리기가 요청을 처리하지 못했을 때 다음 처리기로 넘기는 흐름을 구현한다.
-- 첫 번째 성공 또는 거부 결과에서 연쇄를 중단하고, 끝까지 처리되지 않은 요청을
-  별도의 오류로 구분한다.
-- 새 처리기를 추가할 때 호출자와 기존 처리기의 코드를 수정하지 않는다.
-- 책임 연쇄가 단순한 `match` 또는 `if`보다 유리한 조건과 불필요한 조건을 설명한다.
+- `EventHandler` 계약으로 이벤트 판단 알고리즘을 교체·추가한다.
+- `Continue`와 `Activate`를 구분해 책임 연쇄의 조기 종료를 구현한다.
+- `EventManager`의 상태를 `Option<Event>`로 모델링해 활성 이벤트가 항상 0개 또는
+  1개임을 보장한다.
+- 이벤트 교체 시 `deactivated`와 `activated`를 결과로 통보한다.
+- 후보가 없을 때 기존 이벤트를 해제하고, 같은 이벤트가 다시 선택되면 중복 전환을
+  만들지 않는다.
+- 조건문 하나에 계속 정책을 추가하는 방식과 책임 연쇄의 차이를 설명한다.
 
 ## 2. 선수 지식
 
-- Rust의 `struct`, `enum`, `trait`, `impl`
-- `Result<T, E>`와 `match`
-- `Vec`, `Box<dyn Trait>`, 소유권과 동적 디스패치
-- 이전 장: [03. Command](../03-command/README.md)
+- `struct`, `enum`, `trait`, `impl`, `Option`, `Vec`
+- `Box<dyn Trait>`와 동적 디스패치
+- `Result`·`match`, 소유권과 `Clone`
+- 이전 장: [04. State](../04-state/README.md)
 
 ## 3. 설계할 시스템
 
-### 목표
+### 도메인
 
-클라이언트가 문서 키만 전달하면 요청 처리기가 정해진 순서로 요청을 검사한다.
-각 처리기는 다음 중 하나를 선택한다.
+이벤트 매니저가 여러 후보를 받아 우선순위, 긴급성, 거리, 쿨다운 같은 정책을
+순서대로 적용한다. 정책은 처리기(Handler)로 분리한다.
 
-1. 요청을 처리하고 응답한다.
-2. 자신이 처리할 요청이 아니므로 다음 처리기로 넘긴다.
-3. 처리할 수 있지만 정책상 거부한다.
+```text
+EventRequest
+    │
+    ▼
+EmergencyHandler ── Activate(alarm) ──┐
+    │ Continue                         │ 즉시 종료
+    ▼                                  │
+PriorityHandler ─── Activate(task) ──┘
+    │ Continue
+    ▼
+EventManager.active: Option<Event>  // 항상 하나 이하
+```
 
-### 범위
+### 핵심 상태 전이
 
-- 포함: 인증 검사, 문서 조회, 처리기 순서, 성공·거부·미처리 결과
-- 포함: 새 처리기를 기존 연쇄에 추가하는 확장 지점
-- 제외: 네트워크, 데이터베이스, 비동기 실행, 실제 사용자 인증
+```text
+old = normal, new = alarm
+        └─ deactivated(normal)
+        └─ activated(alarm)
+        └─ active = alarm
+```
 
 ## 4. 기능 요구사항
 
-- [ ] `Request`는 조회할 문서 키를 가진다.
-- [ ] `Authorization` 처리기는 `private` 요청을 거부한다.
-- [ ] `Lookup` 처리기는 `public` 요청에 `public data`를 반환한다.
-- [ ] 처리기가 `Pass`를 반환하면 다음 처리기가 실행된다.
-- [ ] 성공 응답이나 명시적 거부가 나오면 뒤의 처리기는 실행되지 않는다.
-- [ ] 모든 처리기가 `Pass`를 반환하면 `Unhandled`를 반환한다.
-- [ ] 처리기 순서를 바꾸어도 `Chain` 호출자의 코드는 바뀌지 않는다.
-- [ ] 새 처리기를 추가할 때 `Handler` 구현과 `push` 호출만 추가하면 된다.
+- [ ] `Event`는 `id`, `priority`, `urgent`를 가진다.
+- [ ] `EventRequest`는 한 번에 평가할 후보 목록을 가진다.
+- [ ] `EventHandler`는 `Continue` 또는 `Activate(Event)`를 반환한다.
+- [ ] `Continue`이면 다음 처리기로 넘어간다.
+- [ ] `Activate(Event)`이면 이후 처리기는 실행하지 않는다.
+- [ ] `EventManager`는 활성 이벤트를 최대 하나만 보관한다.
+- [ ] 새 이벤트가 선택되면 이전 이벤트는 `deactivated`로 보고되고 새 이벤트는
+  `activated`로 보고된다.
+- [ ] 후보가 없으면 기존 활성 이벤트를 해제하고 `active`를 `None`으로 만든다.
+- [ ] 같은 이벤트가 다시 선택되면 `changed == false`이고 중복 전환을 보고하지 않는다.
+- [ ] 새 판단 알고리즘은 `EventHandler` 구현과 `push`만으로 추가할 수 있다.
 
 ## 5. 사용 사례
 
-### 사용 사례 A: 공개 문서 조회
+### 긴급 이벤트의 즉시 활성화
 
-- 시작 조건: 클라이언트가 `public` 문서를 요청한다.
-- 입력: `Request("public")`
-- 처리 흐름: `Authorization`은 `Pass` → `Lookup`은 응답 반환
-- 기대 결과: `Ok("public data")`
-- 실패 결과: 없음
+긴급 후보가 있으면 `EmergencyHandler`가 즉시 활성화한다. 우선순위 처리기는
+실행되지 않는다. 이 규칙은 “특정 조건이면 바로 활성화하고 연쇄를 끝낸다”는
+책임 연쇄의 핵심이다.
 
-### 사용 사례 B: 비공개 문서 요청
+### 일반 이벤트의 우선순위 선택
 
-- 시작 조건: 클라이언트가 `private` 문서를 요청한다.
-- 입력: `Request("private")`
-- 처리 흐름: `Authorization`이 즉시 거부
-- 기대 결과: `Err(Rejected)`
-- 확인할 점: `Lookup`은 실행되지 않는다.
+긴급 후보가 없으면 첫 처리기는 `Continue`를 반환하고, `PriorityHandler`가 가장
+높은 우선순위 후보 하나를 활성화한다.
 
-### 사용 사례 C: 알 수 없는 문서 요청
+### 활성 이벤트 교체
 
-- 시작 조건: 등록되지 않은 문서 키가 들어온다.
-- 입력: `Request("missing")`
-- 처리 흐름: 모든 처리기가 `Pass`
-- 기대 결과: `Err(Unhandled)`
+`normal`이 활성화된 상태에서 `alarm`이 선택되면 결과에는 두 사건이 모두 담긴다.
+호출자는 UI 갱신, 사운드 중지·재생, 로그 기록을 이 결과로 처리할 수 있다.
 
-### 사용 사례 D: 감사 로그 처리기 추가
+### 이벤트 소멸
 
-- 변경 요청: 모든 요청을 기록하는 `AuditLog` 처리기를 추가한다.
-- 기대 결과: 기존 `Authorization`, `Lookup`, `run`의 핵심 코드를 수정하지 않고
-  연쇄에 처리기를 추가할 수 있다.
+후보가 모두 사라지면 `deactivated`에 이전 이벤트가 담기고 `active`는 `None`이
+된다. 매니저 내부에 오래된 이벤트가 남아 있지 않아야 한다.
 
 ## 6. 완료 조건
 
-- [ ] `cargo test -p chain-of-responsibility`가 통과한다.
-- [ ] 공개 문서·비공개 문서·알 수 없는 문서의 결과가 각각 구분된다.
-- [ ] `Pass` 이후 다음 처리기로 이동하고, 터미널 결과 이후 순회가 중단된다.
-- [ ] 새 처리기 하나를 추가해도 `Handler` 계약만 구현하면 된다.
-- [ ] 학습자가 직접 구현한 연습 코드의 테스트를 활성화해 통과시킨다.
+- [ ] 긴급 이벤트가 선택되면 뒤 처리기의 호출 횟수가 0이다.
+- [ ] 매니저의 `active_event()`는 항상 `None` 또는 하나의 이벤트만 반환한다.
+- [ ] 이벤트 교체 결과에 해제·활성화 이벤트가 모두 기록된다.
+- [ ] 후보가 비면 기존 이벤트가 해제된다.
+- [ ] 같은 이벤트 재평가 시 `changed`가 `false`다.
+- [ ] `cargo test -p chain-of-responsibility --all-targets`가 통과한다.
 
-## 7. 개념 설명
+## 7. 핵심 개념
 
-| 개념 | 해결하는 문제 | 처음 필요한 코드 | 주의할 점 |
-|---|---|---|---|
-| `Handler` trait | 처리기마다 다른 구현을 같은 방식으로 호출 | `src/lib.rs` | trait 자체가 책임 순서를 결정하지는 않는다 |
-| `Pass` | 현재 처리기가 모르는 요청을 전달 | `Chain::handle` | `Pass`와 거부를 섞으면 흐름을 잃는다 |
-| `Box<dyn Handler>` | 런타임에 처리기 목록 구성 | `Chain.handlers` | 동적 디스패치와 힙 할당 비용이 생긴다 |
-| 첫 터미널 결과 | 여러 처리 결과 중 하나를 확정 | `Chain::handle` | 모든 처리기가 실행되어야 한다면 다른 설계가 필요하다 |
+| 개념 | 이 예제의 역할 |
+|---|---|
+| `EventHandler` | 정책 하나를 독립된 확장 지점으로 만든다 |
+| `Continue` | 현재 정책이 결정하지 못했음을 다음 처리기에 전달한다 |
+| `Activate` | 선택을 확정하고 연쇄를 조기 종료한다 |
+| `Option<Event>` | 단일 활성 이벤트 불변식을 표현한다 |
+| `EventTransition` | 해제·활성화·현재 상태를 외부에 통보한다 |
 
 ## 8. 단계별 실습
 
-### `examples/01_direct.rs` — 단일 분기 함수로 요구사항 확인
+### `examples/01_direct.rs` — 패턴을 적용하지 않은 구현
 
-- 학습 목적: 요구사항을 가장 작은 코드로 먼저 검증한다.
-- 수정할 파일: `examples/01_direct.rs`
-- 관찰할 문제: 인증과 조회 정책이 한 함수의 조건문에 결합된다.
-- 실행 명령: `cargo run -p chain-of-responsibility --example chain-of-responsibility-direct`
-- 체크포인트: `public`, `private`, `missing`의 결과를 설명할 수 있다.
+조건문으로 긴급 이벤트를 먼저 찾고, 없으면 우선순위를 비교한다. 정책이 늘어날수록
+한 함수가 커지고 테스트 경계가 흐려지는 것을 관찰한다.
 
-### `examples/02_chain_of_responsibility.rs` — 책임을 처리기로 분리
+```bash
+cargo run -p chain-of-responsibility --example chain-of-responsibility-direct
+```
 
-- 이전 단계와 달라진 점: 조건문을 `Authorization`과 `Lookup`으로 분리한다.
-- 수정할 파일: `src/lib.rs`, `examples/02_chain_of_responsibility.rs`
-- 학습자 작업: `AuditLog` 또는 `RateLimit` 처리기를 하나 추가한다.
-- 실행 명령: `cargo run -p chain-of-responsibility --example chain-of-responsibility-pattern`
-- 기대 결과: 기존 `Chain` 사용 코드는 그대로 두고 처리기만 추가된다.
-- 체크포인트: `Pass`, `Rejected`, `Unhandled`의 차이를 테스트로 고정한다.
+### `examples/02_chain_of_responsibility.rs` — 판단 책임 분리
 
-### `exercise/03-behavioral/05-chain-of-responsibility/` — 직접 구현
+`EmergencyHandler`와 `PriorityHandler`를 연결한다. `EmergencyHandler`가 선택하면
+`PriorityHandler`가 실행되지 않는지 확인한다. 이후 `CooldownHandler` 또는
+`DistanceHandler`를 직접 추가한다.
 
-- 학습 목적: 강의 구현을 보지 않고 동일한 계약을 설계한다.
-- 수정할 파일: `src/lib.rs`, `tests/exercise.rs`
-- 학습자 작업: `Request`, `Response`, `ChainError`, `Handler`, `Chain`을 구현한다.
-- 실행 명령: `cargo test -p exercise-03_behavioral-05_chain_of_responsibility`
-- 통과 기준: 공개·비공개·미등록 요청과 처리기 순서 테스트가 통과한다.
+```bash
+cargo run -p chain-of-responsibility --example chain-of-responsibility-pattern
+```
+
+### 연습 패키지
+
+`exercise/03-behavioral/05-chain-of-responsibility/`에서 `Event`, `EventRequest`,
+`EventDecision`, `EventHandler`, `EventManager`, `EventTransition`을 직접 구현한다.
 
 ## 9. 과제
 
-- 시작 파일: `exercise/03-behavioral/05-chain-of-responsibility/src/lib.rs`
-- 구현할 요구사항: `AuditLog` 처리기를 추가해 모든 요청의 키를 기록한다.
-- 변경하면 안 되는 파일: `Cargo.toml`의 패키지 이름과 테스트 실행 명령
-- 테스트 명령: `cargo test -p exercise-03_behavioral-05_chain_of_responsibility`
-- 제출 결과: 처리기 추가 전후의 결과가 같고, 로그 순서 테스트가 통과한다.
-- 선택 확장: `RateLimit`, `FeatureFlag`, `Cache` 처리기를 추가하고 순서를 바꾸어
-  결과 차이를 관찰한다.
+- `CooldownHandler`를 추가해 쿨다운 이벤트를 건너뛴다.
+- 긴급 이벤트가 있으면 후속 처리기가 호출되지 않는 테스트를 작성한다.
+- 이벤트 교체와 후보 소멸의 전환 결과를 검증한다.
+- 판단기를 `Vec<Box<dyn EventHandler>>`에 추가하는 것만으로 확장되는지 확인한다.
 
-## 10. 체크포인트
+## 10. 회고 질문
 
-- [ ] `public`은 성공, `private`는 거부, `missing`은 미처리로 구분된다.
-- [ ] 처리기 하나가 터미널 결과를 반환하면 다음 처리기가 실행되지 않는다.
-- [ ] 처리기 추가가 `Chain::handle`의 수정으로 이어지지 않는다.
-- [ ] 패턴을 제거하고 조건문으로 되돌렸을 때 변경 지점이 어디로 늘어나는지 설명한다.
-
-## 11. 회고 질문
-
-1. 처리기 순서가 바뀌면 결과가 달라지는가? 달라진다면 순서를 어디에서 관리해야 하는가?
-2. `Pass`와 `Rejected`를 같은 오류 타입으로 표현할 때 생기는 문제는 무엇인가?
-3. 처리기가 하나뿐이라면 이 구조는 과한가?
-4. 모든 처리기가 실행되어야 하는 감사·관찰 요구사항에는 책임 연쇄가 적합한가?
-
-## 12. 선택형 교육 모듈
-
-- [x] 코드 스멜: 조건문과 정책 추가로 커지는 분기 함수
-- [x] SOLID: 새 처리기 추가 시 기존 연쇄 코드를 수정하지 않는 확장
-- [x] 리팩터링: 기존 세 가지 결과 계약을 보존하는 단계별 분리
-- [x] 테스트 전략: 순서, 조기 종료, 빈 연쇄, 미처리 요청 검증
-
-## 실행
-
-````bash
-cargo test -p chain-of-responsibility
-cargo run -p chain-of-responsibility --example chain-of-responsibility-direct
-cargo run -p chain-of-responsibility --example chain-of-responsibility-pattern
-````
+1. 모든 판단기를 실행해 점수를 합산해야 한다면 책임 연쇄 대신 어떤 패턴이 더 적합한가?
+2. `Activate`와 `Continue`를 하나의 `Option<Event>`로 표현하면 무엇을 잃는가?
+3. `active: Option<Event>`가 “하나만 활성”이라는 요구사항을 어떻게 드러내는가?
+4. 이벤트 교체 시 해제를 먼저 통보해야 하는 이유는 무엇인가?
 
 ## 코드 연결
 
 - 공개 API: `src/lib.rs`
 - 직접 구현: `examples/01_direct.rs`
 - 패턴 적용: `examples/02_chain_of_responsibility.rs`
-- 연습 패키지: `exercise/03-behavioral/05-chain-of-responsibility/`
-- 이벤트 프로젝트 연결: `chapters/03-behavioral/projects/01-event-arbiter/stages/02-pipeline.md`
-
+- 단위 계약 테스트: `tests/event_manager.rs`
+- 직접 구현 연습: `exercise/03-behavioral/05-chain-of-responsibility/`
+- 확장 프로젝트: `chapters/03-behavioral/projects/01-event-arbiter/`

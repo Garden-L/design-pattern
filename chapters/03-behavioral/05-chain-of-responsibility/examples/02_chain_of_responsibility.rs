@@ -1,34 +1,55 @@
-use chain_of_responsibility::{EventManager, ChainError, Handler, Request, Response};
+use chain_of_responsibility::{
+    Event, EventDecision, EventHandler, EventManager, EventRequest, EventTransition,
+};
 
-struct Authorization;
-impl Handler for Authorization {
-    fn handle(&self, request: &Request) -> Result<Response, ChainError> {
-        if request.0 == "private" {
-            Err(ChainError::Rejected)
-        } else {
-            Err(ChainError::Continue)
-        }
+struct EmergencyHandler;
+
+impl EventHandler for EmergencyHandler {
+    fn handle(&self, request: &EventRequest) -> EventDecision {
+        request
+            .candidates
+            .iter()
+            .find(|event| event.urgent)
+            .cloned()
+            .map(EventDecision::Activate)
+            .unwrap_or(EventDecision::Continue)
     }
 }
 
-struct Lookup;
-impl Handler for Lookup {
-    fn handle(&self, request: &Request) -> Result<Response, ChainError> {
-        if request.0 == "public" {
-            Ok(Response("public data".into()))
-        } else {
-            Err(ChainError::Continue)
-        }
+struct PriorityHandler;
+
+impl EventHandler for PriorityHandler {
+    fn handle(&self, request: &EventRequest) -> EventDecision {
+        request
+            .candidates
+            .iter()
+            .max_by_key(|event| event.priority)
+            .cloned()
+            .map(EventDecision::Activate)
+            .unwrap_or(EventDecision::Continue)
     }
 }
 
-pub fn run(key: &str) -> Result<String, ChainError> {
-    let mut chain = EventManager::new();
-    chain.push(Authorization);
-    chain.push(Lookup);
-    chain
-        .handle(&Request(key.into()))
-        .map(|response| response.0)
+pub fn run(candidates: Vec<Event>) -> EventTransition {
+    let mut manager = EventManager::new();
+    manager.push(EmergencyHandler);
+    manager.push(PriorityHandler);
+    manager.process(EventRequest::new(candidates))
 }
+
 #[allow(dead_code)]
-pub fn main() {}
+fn main() {
+    let transition = run(vec![
+        Event {
+            id: "normal",
+            priority: 10,
+            urgent: false,
+        },
+        Event {
+            id: "alarm",
+            priority: 100,
+            urgent: true,
+        },
+    ]);
+    println!("active = {:?}", transition.active.map(|event| event.id));
+}

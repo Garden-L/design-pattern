@@ -1,6 +1,6 @@
 //! Synchronous validation and delivery, with actor-owned processing metrics.
 use behavioral::{
-    chain::{EventManager, ChainError, Handler, Request, Response},
+    chain::{ChainError, Handler, Request, RequestChain, Response},
     command::{Add, Command, CommandError, Context},
     observer::{Event, EventBus, SubscriptionId},
 };
@@ -74,7 +74,7 @@ impl Metrics {
 }
 
 pub struct EventPipeline {
-    chain: EventManager,
+    chain: RequestChain,
     context: Context,
     bus: EventBus,
     actor: CounterActor,
@@ -86,7 +86,7 @@ impl Default for EventPipeline {
 }
 impl EventPipeline {
     pub fn new() -> Self {
-        let mut chain = EventManager::new();
+        let mut chain = RequestChain::new();
         chain.push(RejectEmpty);
         chain.push(RouteAdd);
         Self {
